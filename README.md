@@ -8,7 +8,7 @@ A class made to help texturing objects with many images, with the 3D rendering t
 I made an article on this subject, if you're interested in what's in here, you'll probably want to read it: http://scylardor.fr/2013/05/06/making-multi-texturing-work-with-vtk/
 
 
-WHY AND HOW IT WOKRS
+WHY AND HOW IT WORKS
 --------------------
 VTK doesn't handle well multitexturing out of the box.
 
