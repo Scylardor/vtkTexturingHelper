@@ -193,8 +193,8 @@ void vtkTexturingHelper::retrieveOBJFileTCoords() {
 
 // Method to obtain a PolyData out of a Wavefront OBJ file
 void vtkTexturingHelper::readOBJFile(const std::string & _filename) {
-    this->setGeometryFile(_filename);
-    this->geoReadOBJ();
+    setGeometryFile(_filename);
+    geoReadOBJ();
 
     vtkOBJReader* reader = vtkOBJReader::New();
 
@@ -206,7 +206,7 @@ void vtkTexturingHelper::readOBJFile(const std::string & _filename) {
 #else
     m_mapper->SetInputData(reader->GetOutput());
 #endif
-    this->retrieveOBJFileTCoords();
+    retrieveOBJFileTCoords();
 }
 
 // Method to obtain a PolyData out of a Wavefront OBJ file (internal)
@@ -221,10 +221,10 @@ void vtkTexturingHelper::geoReadOBJ() {
 #else
     m_mapper->SetInputData(reader->GetOutput());
 #endif
-    this->retrieveOBJFileTCoords();
+    retrieveOBJFileTCoords();
 }
 
-// Allows to manually specify the texture file names.
+// addTextureFile - Primary function to manually specify a texture to use by its name.
 // It can be useful when texture files names don't respect the "name_imageNumber.ext" convention.
 // However, it is important to specify the textures in the same order than they are described in the geometry file !
 // The results will otherwise be erroneous.
@@ -232,43 +232,38 @@ void vtkTexturingHelper::addTextureFile(const std::string & _imageFile) {
     m_texturesFiles.push_back(_imageFile);
 }
 
-// This method has been created with Artec3D scans examples in mind.
-// In most of these examples, a geometry file called "geo.ext" will be accompanied by multiple texture files
-// which will, logically, be called "geo_0.jpg", "geo_1.jpg", "geo_2.jpg", etc. in their order of appearance when describing
-// the vertices textures coordinates in the geometry file (OBJ, PLY, STL...).
-// This function permits to deal with those cases easily.
-// e.g.: using ("sasha", ".jpg", 3) as parameters will make it add "sasha_0.jpg", "sasha_1.jpg", and "sasha_2.jpg" to the
-// list of the texture files to use.
-// This is a filename convention since you usually have a geometry file (like "sasha.obj"), and its texture files with the same name,
-// an underscore and a number appended to it.
-// This convenience function takes the assumption that the geometry file respects this logical order of appearance in the geometry file,
-// like Artec3D examples do.
+// associateTextureFiles - feed the vtkTexturingHelper with texture files with a specific filename pattern.
+// Instead of adding textures one by one, you can make the helper add textures with similar names.
+// This function currently supports the filename format "example_imgNumber.ext",
+// e.g.: using ("sasha", ".jpg", 3) as parameters will make it add "sasha_0.jpg", "sasha_1.jpg", and "sasha_2.jpg" to the list of the texture files to use.
+// When doing so, be sure that the texture coordinates data in the geometry file references the textures in that exact same order.
 void vtkTexturingHelper::associateTextureFiles(const std::string & _rootName, const std::string & _extension, int _numberOfFiles) {
-    std::string textureFile;
-
     for (int i = 0; i < _numberOfFiles; i++) {
         std::stringstream ss;
-
         ss << i;
-        textureFile = _rootName + "_" + ss.str() + _extension;
-        this->addTextureFile(textureFile);
+
+        const std::string textureFile = _rootName + "_" + ss.str() + _extension;
+        addTextureFile(textureFile);
     }
 }
 
 
 void vtkTexturingHelper::readGeometryFile(const std::string & _filename) {
-    std::string empty("");
+    const std::string empty("");
 
     if (_filename != empty) {
-        this->setGeometryFile(_filename);
+        setGeometryFile(_filename);
     }
-    std::string ext = m_geoFile.substr(m_geoFile.find_last_of("."));
+    const std::string ext = m_geoFile.substr(m_geoFile.find_last_of("."));
 
     if (m_geoExtensionsMap.find(ext) != m_geoExtensionsMap.end()) {
         (this->*m_geoExtensionsMap[ext])();
     }
     else {
-        std::cerr << "vtkTexturingHelper: " << ext << ": Unknown geometry file extension" << std::endl;
+        std::string errMsg = "Unmanaged geometry file extension: ";
+        errMsg += ext;
+
+        throw vtkTexturingHelperException(errMsg.c_str());
     }
 }
 
