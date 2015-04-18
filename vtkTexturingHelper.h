@@ -46,7 +46,7 @@ private:
 /* vtkTexturingHelper */
 // A helper class to let you render multi-textured objects in VTK
 // Currently supported geometry file formats: OBJ
-// Currently supported texture file formats: JPEG
+// Currently supported texture file formats: every image format known to vtkImageReader2Factory
 class vtkTexturingHelper {
 public:
 	vtkTexturingHelper();
