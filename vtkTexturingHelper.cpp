@@ -29,123 +29,133 @@
 
 #include "vtkTexturingHelper.h"
 
-vtkTexturingHelper::vtkTexturingHelper()
-{
-  this->thePolyData_ = NULL;
-  this->theActor_ = vtkActor::New();
-  this->geoExtensionsMap_[".obj"] = &vtkTexturingHelper::geoReadOBJ;
-  this->imgExtensionsMap_[".jpg"] = &vtkTexturingHelper::readjPEGTexture;
-  this->TCoordsCount_ = 0;
+vtkTexturingHelper::vtkTexturingHelper() {
+    m_polyData = NULL;
+    m_actor = vtkActor::New();
+    m_geoExtensionsMap[".obj"] = &vtkTexturingHelper::geoReadOBJ;
+    m_imgExtensionsMap[".jpg"] = &vtkTexturingHelper::readjPEGTexture;
+    m_TCoordsCount = 0;
+    m_mapper = vtkSmartPointer<vtkPolyDataMapper>::New();
 }
 
 
-vtkTexturingHelper::~vtkTexturingHelper() {}
+vtkTexturingHelper::~vtkTexturingHelper() {
+}
 
 
 void vtkTexturingHelper::readjPEGTexture(int index)
 {
-  vtkSmartPointer<vtkJPEGReader> jPEGReader = vtkSmartPointer<vtkJPEGReader>::New();
-  vtkSmartPointer<vtkTexture> newTexture = vtkSmartPointer<vtkTexture>::New();
+    vtkSmartPointer<vtkJPEGReader> jPEGReader = vtkSmartPointer<vtkJPEGReader>::New();
+    vtkSmartPointer<vtkTexture> newTexture = vtkSmartPointer<vtkTexture>::New();
 
-  jPEGReader->SetFileName(this->texturesFiles_[index].c_str());
-  jPEGReader->Update();
-  newTexture->SetInputConnection(jPEGReader->GetOutputPort());
-  this->textures_.push_back(newTexture);
+    jPEGReader->SetFileName(m_texturesFiles[index].c_str());
+    jPEGReader->Update();
+    newTexture->SetInputConnection(jPEGReader->GetOutputPort());
+    m_textures.push_back(newTexture);
 }
 
 
 void vtkTexturingHelper::configureTexture(int texIndex)
 {
-  if (texIndex == 0) {
-    this->textures_[texIndex]->SetBlendingMode(vtkTexture::VTK_TEXTURE_BLENDING_MODE_REPLACE);
-  } else {
-    this->textures_[texIndex]->SetBlendingMode(vtkTexture::VTK_TEXTURE_BLENDING_MODE_ADD);
-  }
+    if (texIndex == 0)
+    {
+        m_textures[texIndex]->SetBlendingMode(vtkTexture::VTK_TEXTURE_BLENDING_MODE_REPLACE);
+    }
+    else
+    {
+        m_textures[texIndex]->SetBlendingMode(vtkTexture::VTK_TEXTURE_BLENDING_MODE_ADD);
+    }
 }
 
 
 void vtkTexturingHelper::convertImagesToTextures()
 {
-  int texIndex;
+    int texIndex;
 
-  for (texIndex = 0; texIndex != this->texturesFiles_.size(); texIndex++)
+    for (texIndex = 0; texIndex != m_texturesFiles.size(); texIndex++)
     {
-      std::string	ext = this->texturesFiles_[texIndex].substr(this->texturesFiles_[texIndex].find_last_of("."));
+        std::string	ext = m_texturesFiles[texIndex].substr(m_texturesFiles[texIndex].find_last_of("."));
 
-      if (this->imgExtensionsMap_.find(ext) != this->imgExtensionsMap_.end()) {
-	(this->*imgExtensionsMap_[ext])(texIndex);
-	this->configureTexture(texIndex);
-      } else {
-	std::cerr << "vtkTexturingHelper: " << ext << ": Unknown image extension" << std::endl;
-      }
+        if (m_imgExtensionsMap.find(ext) != m_imgExtensionsMap.end())
+        {
+            (this->*m_imgExtensionsMap[ext])(texIndex);
+            this->configureTexture(texIndex);
+        }
+        else
+        {
+            std::cerr << "vtkTexturingHelper: " << ext << ": Unknown image extension" << std::endl;
+        }
     }
 }
 
 
 void vtkTexturingHelper::applyTextures()
 {
-  vtkSmartPointer<vtkPolyDataMapper> mapper = vtkSmartPointer<vtkPolyDataMapper>::New();
+    vtkSmartPointer<vtkPolyDataMapper> mapper = vtkSmartPointer<vtkPolyDataMapper>::New();
 
-  this->convertImagesToTextures();
+    this->convertImagesToTextures();
 #if VTK_MAJOR_VERSION < 6
-  mapper->SetInput(this->thePolyData_);
+    mapper->SetInput(m_polyData);
 #else
-  mapper->SetInputData(this->thePolyData_);
+    mapper->SetInputData(m_polyData);
 #endif
-  int tu; // number of texture units
-  vtkRenderWindow* tmp = vtkRenderWindow::New();
-  vtkOpenGLHardwareSupport* hardware = vtkOpenGLRenderWindow::SafeDownCast(tmp)->GetHardwareSupport();
+    int tu; // number of texture units
+    vtkRenderWindow* tmp = vtkRenderWindow::New();
+    vtkOpenGLHardwareSupport* hardware = vtkOpenGLRenderWindow::SafeDownCast(tmp)->GetHardwareSupport();
 
-  tu = 0;
-  if (hardware->GetSupportsMultiTexturing())
+    tu = 0;
+    if (hardware->GetSupportsMultiTexturing())
     {
-      tu = hardware->GetNumberOfFixedTextureUnits();
+        tu = hardware->GetNumberOfFixedTextureUnits();
     }
-  if (tu >= 2)
+    if (tu >= 2)
     {
-      int textureUnit = vtkProperty::VTK_TEXTURE_UNIT_0;
+        int textureUnit = vtkProperty::VTK_TEXTURE_UNIT_0;
 
-      for (unsigned int texNumber = 0; texNumber <= tu && texNumber < this->TCoordsArrays_.size(); texNumber++) {
-	mapper->MapDataArrayToMultiTextureAttribute(
-						    textureUnit, this->TCoordsArrays_[texNumber]->GetName(),
-						    vtkDataObject::FIELD_ASSOCIATION_POINTS);
-	this->thePolyData_->GetPointData()->AddArray(this->TCoordsArrays_[texNumber]);
-	textureUnit++;
-      }
-      textureUnit = vtkProperty::VTK_TEXTURE_UNIT_0;
-      for (unsigned int texNumber = 0; texNumber < this->TCoordsArrays_.size(); texNumber++) {
-	this->theActor_->GetProperty()->SetTexture(textureUnit, this->textures_[texNumber]);
-	textureUnit++;
-      }
+        for (unsigned int texNumber = 0; texNumber <= tu && texNumber < m_TCoordsArrays.size(); texNumber++)
+        {
+            mapper->MapDataArrayToMultiTextureAttribute(
+                textureUnit, m_TCoordsArrays[texNumber]->GetName(),
+                vtkDataObject::FIELD_ASSOCIATION_POINTS);
+            m_polyData->GetPointData()->AddArray(m_TCoordsArrays[texNumber]);
+            textureUnit++;
+        }
+        textureUnit = vtkProperty::VTK_TEXTURE_UNIT_0;
+        for (unsigned int texNumber = 0; texNumber < m_TCoordsArrays.size(); texNumber++)
+        {
+            m_actor->GetProperty()->SetTexture(textureUnit, m_textures[texNumber]);
+            textureUnit++;
+        }
     }
-  else
+    else
     {
-      // no multitexturing just show one texture.
-      this->theActor_->SetTexture(this->textures_[0]);
-      std::cerr << "vtkTexturingHelper: Warning, multi-texturing isn't supported - falling back to mono-texturing" << std::endl;
+        // no multitexturing just show one texture.
+        m_actor->SetTexture(m_textures[0]);
+        std::cerr << "vtkTexturingHelper: Warning, multi-texturing isn't supported - falling back to mono-texturing" << std::endl;
     }
-  this->theActor_->SetMapper(mapper);
-  tmp->Delete();
+    m_actor->SetMapper(mapper);
+    tmp->Delete();
 }
 
 
 void vtkTexturingHelper::insertNewTCoordsArray()
 {
-  vtkSmartPointer<vtkFloatArray> newTCoords = vtkSmartPointer<vtkFloatArray>::New();
-  std::stringstream ss;
-  std::string arrayName;
-  unsigned int tuplesNumber;
+    vtkSmartPointer<vtkFloatArray> newTCoords = vtkSmartPointer<vtkFloatArray>::New();
+    std::stringstream ss;
+    std::string arrayName;
+    unsigned int tuplesNumber;
 
-  ss << this->TCoordsCount_;
-  arrayName = "TCoords" + ss.str();
-  newTCoords->SetName(arrayName.c_str());
-  newTCoords->SetNumberOfComponents(2);
-  this->TCoordsCount_++;
-  tuplesNumber = static_cast<unsigned int>(this->thePolyData_->GetPointData()->GetNumberOfTuples());
-  for (unsigned int pointNbr = 0; pointNbr < tuplesNumber; pointNbr++) {
-    newTCoords->InsertNextTuple2(-1.0, -1.0);
-  }
-  this->TCoordsArrays_.push_back(newTCoords);
+    ss << m_TCoordsCount;
+    arrayName = "TCoords" + ss.str();
+    newTCoords->SetName(arrayName.c_str());
+    newTCoords->SetNumberOfComponents(2);
+    m_TCoordsCount++;
+    tuplesNumber = static_cast<unsigned int>(m_polyData->GetPointData()->GetNumberOfTuples());
+    for (unsigned int pointNbr = 0; pointNbr < tuplesNumber; pointNbr++)
+    {
+        newTCoords->InsertNextTuple2(-1.0, -1.0);
+    }
+    m_TCoordsArrays.push_back(newTCoords);
 }
 
 // Method called after we retrieved the polyData from .obj file with vtkOBJReader.
@@ -153,74 +163,87 @@ void vtkTexturingHelper::insertNewTCoordsArray()
 // So we have to re-read the file by ourselves, to know how many TCoords points are allocated to each image, and then
 // create as many smaller arrays than necessary, filling them with the right values at the right place, putting "-1"'s on all the
 // points indexes that aren't supposed to be covered by a texture.
-// This process also assumes the files are in the right order (i.e. the order in which this->texturesFiles_ has been filled matches
+// This process also assumes the files are in the right order (i.e. the order in which m_texturesFiles has been filled matches
 // the order in which the images' texture coordinates are given in the .obj file).
 // This may change in the future if this class implements the .mtl file parsing (which would even avoid us to have to specify the
 // image files' names manually).
 void vtkTexturingHelper::retrieveOBJFileTCoords()
 {
-  std::string prevWord = "";
-  std::ifstream	objFile;
-  std::string line;
-  unsigned int texPointsCount = 0;
+    std::string prevWord = "";
+    std::ifstream	objFile;
+    std::string line;
+    unsigned int texPointsCount = 0;
 
-  objFile.open(this->geoFile_.c_str());
-  if (!objFile.is_open())
+    objFile.open(m_geoFile.c_str());
+    if (!objFile.is_open())
     {
-      std::cerr << "vtkTexturingHelper: Unable to open OBJ file " << this->geoFile_ << std::endl;
+        std::cerr << "vtkTexturingHelper: Unable to open OBJ file " << m_geoFile << std::endl;
     }
-  while ( objFile.good() )
+    while ( objFile.good() )
     {
-      std::stringstream	ss;
-      std::string  word;
-      float x, y;
+        std::stringstream	ss;
+        std::string  word;
+        float x, y;
 
-      getline(objFile, line);
-      ss << line;
-      ss >> word >> x >> y; // assumes the line is well made (in case of a "vt line" it should be like "vt 42.84 42.84")
-      if (word == "vt") {
-	if (prevWord != "vt") {
-	  insertNewTCoordsArray(); // if we find a vertex texture line and it's the first of a row: create a new TCoords array
-	}
-	int arrayNbr;
-	// In a Obj file, texture coordinates are listed by texture, so we want to put it in the TCoords array of the right texture
-	// but not in the array of other textures. But every TCoords array musts also have the same number of points than the mesh!
-	// So to do this we append the coordinates to the concerned TCoords array (the last one created)
-	// and put (-1.0, -1.0) in the others instead.
-	for (arrayNbr = 0; arrayNbr != this->TCoordsArrays_.size() - 1; arrayNbr++) {
-	  this->TCoordsArrays_[arrayNbr]->SetTuple2(texPointsCount, -1.0, -1.0);
-	}
-	this->TCoordsArrays_[arrayNbr]->SetTuple2(texPointsCount, x, y);
-	texPointsCount++;
-      }
-      prevWord = word;
+        getline(objFile, line);
+        ss << line;
+        ss >> word >> x >> y; // assumes the line is well made (in case of a "vt line" it should be like "vt 42.84 42.84")
+        if (word == "vt")
+        {
+            if (prevWord != "vt")
+            {
+                insertNewTCoordsArray(); // if we find a vertex texture line and it's the first of a row: create a new TCoords array
+            }
+            int arrayNbr;
+            // In a Obj file, texture coordinates are listed by texture, so we want to put it in the TCoords array of the right texture
+            // but not in the array of other textures. But every TCoords array musts also have the same number of points than the mesh!
+            // So to do this we append the coordinates to the concerned TCoords array (the last one created)
+            // and put (-1.0, -1.0) in the others instead.
+            for (arrayNbr = 0; arrayNbr != m_TCoordsArrays.size() - 1; arrayNbr++)
+            {
+                m_TCoordsArrays[arrayNbr]->SetTuple2(texPointsCount, -1.0, -1.0);
+            }
+            m_TCoordsArrays[arrayNbr]->SetTuple2(texPointsCount, x, y);
+            texPointsCount++;
+        }
+        prevWord = word;
     }
-  objFile.close();
+    objFile.close();
 }
 
 // Method to obtain a PolyData out of a Wavefront OBJ file
 void vtkTexturingHelper::readOBJFile(const std::string & filename)
 {
-  this->setGeometryFile(filename);
-  this->geoReadOBJ();
+    this->setGeometryFile(filename);
+    this->geoReadOBJ();
 
-  vtkOBJReader* reader = vtkOBJReader::New();
+    vtkOBJReader* reader = vtkOBJReader::New();
 
-  reader->SetFileName(this->geoFile_.c_str());
-  reader->Update();
-  this->thePolyData_ = reader->GetOutput();
-  this->retrieveOBJFileTCoords();
+    reader->SetFileName(m_geoFile.c_str());
+    reader->Update();
+    m_polyData = reader->GetOutput();
+#if VTK_MAJOR_VERSION < 6
+    m_mapper->SetInput(reader->GetOutput());
+#else
+    m_mapper->SetInputData(reader->GetOutput());
+#endif
+    this->retrieveOBJFileTCoords();
 }
 
 // Method to obtain a PolyData out of a Wavefront OBJ file (internal)
 void vtkTexturingHelper::geoReadOBJ()
 {
-  vtkOBJReader* reader = vtkOBJReader::New();
+    vtkOBJReader* reader = vtkOBJReader::New();
 
-  reader->SetFileName(this->geoFile_.c_str());
-  reader->Update();
-  this->thePolyData_ = reader->GetOutput();
-  this->retrieveOBJFileTCoords();
+    reader->SetFileName(m_geoFile.c_str());
+    reader->Update();
+    m_polyData = reader->GetOutput();
+#if VTK_MAJOR_VERSION < 6
+    m_mapper->SetInput(reader->GetOutput());
+#else
+    m_mapper->SetInputData(reader->GetOutput());
+#endif
+    this->retrieveOBJFileTCoords();
 }
 
 // Allows to manually specify the texture file names.
@@ -229,7 +252,7 @@ void vtkTexturingHelper::geoReadOBJ()
 // The results will otherwise be erroneous.
 void vtkTexturingHelper::addTextureFile(const std::string & imageFile)
 {
-  this->texturesFiles_.push_back(imageFile);
+    m_texturesFiles.push_back(imageFile);
 }
 
 // This method has been created with Artec3D scans examples in mind.
@@ -245,62 +268,66 @@ void vtkTexturingHelper::addTextureFile(const std::string & imageFile)
 // like Artec3D examples do.
 void vtkTexturingHelper::associateTextureFiles(const std::string & rootName, const std::string & extension, int numberOfFiles)
 {
-  std::string textureFile;
+    std::string textureFile;
 
-  for (int i = 0; i < numberOfFiles; i++)
+    for (int i = 0; i < numberOfFiles; i++)
     {
-      std::stringstream	ss;
+        std::stringstream	ss;
 
-      ss << i;
-      textureFile = rootName + "_" + ss.str() + extension;
-      this->addTextureFile(textureFile);
+        ss << i;
+        textureFile = rootName + "_" + ss.str() + extension;
+        this->addTextureFile(textureFile);
     }
 }
 
 
 void vtkTexturingHelper::readGeometryFile(const std::string & filename)
 {
-  std::string empty("");
+    std::string empty("");
 
-  if (filename != empty) {
-    this->setGeometryFile(filename);
-  }
-  std::string ext = this->geoFile_.substr(geoFile_.find_last_of("."));
+    if (filename != empty)
+    {
+        this->setGeometryFile(filename);
+    }
+    std::string ext = m_geoFile.substr(m_geoFile.find_last_of("."));
 
-  if (this->geoExtensionsMap_.find(ext) != this->geoExtensionsMap_.end()) {
-    (this->*geoExtensionsMap_[ext])();
-  }
-  else {
-    std::cerr << "vtkTexturingHelper: " << ext << ": Unknown geometry file extension" << std::endl;
-  }
+    if (m_geoExtensionsMap.find(ext) != m_geoExtensionsMap.end())
+    {
+        (this->*m_geoExtensionsMap[ext])();
+    }
+    else
+    {
+        std::cerr << "vtkTexturingHelper: " << ext << ": Unknown geometry file extension" << std::endl;
+    }
 }
 
 
 void vtkTexturingHelper::clearTexturesList()
 {
-  this->texturesFiles_.clear();
+    m_texturesFiles.clear();
 }
 
 
 vtkPolyData* vtkTexturingHelper::getPolyData() const
 {
-  return this->thePolyData_;
+    return m_polyData;
 }
 
 
 vtkActor* vtkTexturingHelper::getActor() const
 {
-  return this->theActor_;
+    m_actor->SetMapper(m_mapper);
+    return m_actor;
 }
 
 
 void vtkTexturingHelper::setPolyData(vtkPolyData *polyData)
 {
-  this->thePolyData_ = polyData;
+    m_polyData = polyData;
 }
 
 
 void vtkTexturingHelper::setGeometryFile(const std::string & file)
 {
-  this->geoFile_ = file;
+    m_geoFile = file;
 }

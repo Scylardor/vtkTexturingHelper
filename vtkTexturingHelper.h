@@ -27,35 +27,34 @@
 
 #include "vtkActor.h"
 #include "vtkPolyData.h"
+#include "vtkPolyDataMapper.h"
 #include "vtkTexture.h"
 #include "vtkFloatArray.h"
 #include "vtkSmartPointer.h"
 
-// A class useful for correctly displaying multi-textured objects (i.e. that are textured by different image files),
-//	since VTK doesn't do it by default. The basic use of it should be to just specify a 3D object file (e.g. a .obj file)
-//	and some texture files (e.g. .jpg's or .png's), and directly retrieve a correctly-textured actor to add to a renderer.
 
-//	For the moment it only works with vtkOBJReader and vtkjPEGReader, but its design should easily allow using others
-//	VTK importers (VRML, PLY, X3D for geometry, PNG for images...) in the future.
-class	vtkTexturingHelper
-{
+/* vtkTexturingHelper */
+// A helper class to let you render multi-textured objects in VTK
+// Currently supported geometry file formats: OBJ
+// Currently supported texture file formats: JPEG
+class vtkTexturingHelper {
 public:
 	// Ctors/dtors
 	vtkTexturingHelper();
 	~vtkTexturingHelper();
 
 	// Textures methods
-	void addTextureFile(const std::string & file);
-	void associateTextureFiles(const std::string & rootName, const std::string & extension, int numberOfFiles);
+	void addTextureFile(const std::string & _file);
+	void associateTextureFiles(const std::string & _rootName, const std::string & _extension, int _numberOfFiles);
 	void clearTexturesList();
 	void convertImagesToTextures();
 	void applyTextures();
-	void configureTexture(int);
-	void readjPEGTexture(int);
+	void configureTexture(int _nbTextures);
+	void readjPEGTexture(int _texIndex);
 
 	// Geometry methods
-	void readGeometryFile(const std::string & filename="");
-	void readOBJFile(const std::string & filename);
+	void readGeometryFile(const std::string & _filename="");
+	void readOBJFile(const std::string & _filename);
 
 	// Get/Setters
 
@@ -63,10 +62,10 @@ public:
 	// (by calling Delete or wrapping it in a smart pointer).
 	vtkActor* getActor() const;
 	vtkPolyData* getPolyData() const;
-	void setPolyData(vtkPolyData *polyData);
+	void setPolyData(vtkPolyData * _polyData);
 	// Specifies the geometry file to use.
 	// Needs to be called before readGeometryFile() (unless you specify the name to readGeometryFile)
-	void setGeometryFile(const std::string & file);
+	void setGeometryFile(const std::string & _file);
 
 private:
 	typedef void (vtkTexturingHelper::*geoReaderFunction)();
@@ -76,15 +75,17 @@ private:
 	void retrieveOBJFileTCoords();
 	void insertNewTCoordsArray();
 
-	std::vector<std::string> texturesFiles_;
-	std::vector<vtkSmartPointer<vtkFloatArray> > TCoordsArrays_;
-	std::vector<vtkSmartPointer<vtkTexture> > textures_;
-	std::map<std::string, geoReaderFunction> geoExtensionsMap_;
-	std::map<std::string, imgReaderFunction> imgExtensionsMap_;
-	unsigned short TCoordsCount_;
-	std::string geoFile_;
-	vtkPolyData* thePolyData_;
-	vtkActor* theActor_;
+	std::vector<std::string> m_texturesFiles;
+	std::vector<vtkSmartPointer<vtkFloatArray> > m_TCoordsArrays;
+	std::vector<vtkSmartPointer<vtkTexture> > m_textures;
+	std::map<std::string, geoReaderFunction> m_geoExtensionsMap;
+	std::map<std::string, imgReaderFunction> m_imgExtensionsMap;
+	unsigned short m_TCoordsCount;
+	std::string m_geoFile;
+	vtkPolyData* m_polyData;
+	vtkSmartPointer<vtkPolyDataMapper> m_mapper;
+	vtkActor* m_actor;
+
 };
 
 #endif
