@@ -66,14 +66,16 @@ void vtkTexturingHelper::configureTexture(int _texIndex) {
 
 void vtkTexturingHelper::convertImagesToTextures() {
     for (int texIndex = 0; texIndex != m_texturesFiles.size(); texIndex++) {
-        std::string	ext = m_texturesFiles[texIndex].substr(m_texturesFiles[texIndex].find_last_of("."));
+        const std::string ext = m_texturesFiles[texIndex].substr(m_texturesFiles[texIndex].find_last_of("."));
 
         if (m_imgExtensionsMap.find(ext) != m_imgExtensionsMap.end()) {
             (this->*m_imgExtensionsMap[ext])(texIndex);
-            this->configureTexture(texIndex);
+            configureTexture(texIndex);
         }
         else {
-            std::cerr << "vtkTexturingHelper: " << ext << ": Unknown image extension" << std::endl;
+            std::string error = "Unmanaged image extension: ";
+            error += ext;
+            throw vtkTexturingHelperException(error.c_str());
         }
     }
 }
@@ -82,7 +84,8 @@ void vtkTexturingHelper::convertImagesToTextures() {
 void vtkTexturingHelper::applyTextures() {
     this->convertImagesToTextures();
 
-    int tu; // number of texture units
+    int tu; // number of supported texture units
+    // We need a temporary render window to know whether the hardware supports multitexturing.
     vtkRenderWindow* tmp = vtkRenderWindow::New();
     vtkOpenGLHardwareSupport* hardware = vtkOpenGLRenderWindow::SafeDownCast(tmp)->GetHardwareSupport();
 
@@ -93,79 +96,87 @@ void vtkTexturingHelper::applyTextures() {
     if (tu >= 2 && m_textures.size() > 1) {
         int textureUnit = vtkProperty::VTK_TEXTURE_UNIT_0;
 
+        // Map each TCoords array to the good texture unit in the polyData.
         for (unsigned int texNumber = 0; texNumber <= tu && texNumber < m_TCoordsArrays.size(); texNumber++) {
-            m_mapper->MapDataArrayToMultiTextureAttribute(
-                textureUnit, m_TCoordsArrays[texNumber]->GetName(),
-                vtkDataObject::FIELD_ASSOCIATION_POINTS);
+            m_mapper->MapDataArrayToMultiTextureAttribute(textureUnit,
+                                                          m_TCoordsArrays[texNumber]->GetName(),
+                                                          vtkDataObject::FIELD_ASSOCIATION_POINTS);
             m_polyData->GetPointData()->AddArray(m_TCoordsArrays[texNumber]);
             textureUnit++;
         }
+        // Set the textures to use in the actor.
         textureUnit = vtkProperty::VTK_TEXTURE_UNIT_0;
         for (unsigned int texNumber = 0; texNumber < m_TCoordsArrays.size(); texNumber++) {
             m_actor->GetProperty()->SetTexture(textureUnit, m_textures[texNumber]);
             textureUnit++;
         }
     }
-    else {
-        // no multitexturing just show one texture.
+    else { // if no multitexturing or using only one texture
         m_actor->SetTexture(m_textures[0]);
-        std::cerr << "vtkTexturingHelper: Warning, multi-texturing isn't supported - falling back to mono-texturing" << std::endl;
+        if (tu < 2) { // hardware doesn't support multitexturing
+            std::cerr << "vtkTexturingHelper: Warning, multi-texturing isn't supported - falling back to mono-texturing" << std::endl;
+        }
     }
-    tmp->Delete();
+    tmp->Delete(); // free the temporary render window
 }
 
-
+// insertNewTCoordsArray - insert a new array of texture coordinates
+// When using multitexturing, each TCoord array gives coordinates to texturize a part of the mesh
+// but these arrays need to contain (-1.0, -1.0) coordinates for vertices that don't concern their mesh part, so do it here
 void vtkTexturingHelper::insertNewTCoordsArray() {
-    vtkSmartPointer<vtkFloatArray> newTCoords = vtkSmartPointer<vtkFloatArray>::New();
     std::stringstream ss;
     std::string arrayName;
-    unsigned int tuplesNumber;
-
     ss << m_TCoordsCount;
     arrayName = "TCoords" + ss.str();
+
+    vtkSmartPointer<vtkFloatArray> newTCoords = vtkSmartPointer<vtkFloatArray>::New();
     newTCoords->SetName(arrayName.c_str());
     newTCoords->SetNumberOfComponents(2);
     m_TCoordsCount++;
-    tuplesNumber = static_cast<unsigned int>(m_polyData->GetPointData()->GetNumberOfTuples());
+    const unsigned int tuplesNumber = static_cast<unsigned int>(m_polyData->GetPointData()->GetNumberOfTuples());
     for (unsigned int pointNbr = 0; pointNbr < tuplesNumber; pointNbr++) {
         newTCoords->InsertNextTuple2(-1.0, -1.0);
     }
     m_TCoordsArrays.push_back(newTCoords);
 }
 
-// Method called after we retrieved the polyData from .obj file with vtkOBJReader.
-// VTK doesn't make the differences between the texture coordinates of each image: it just stores everything in one big array.
-// So we have to re-read the file by ourselves, to know how many TCoords points are allocated to each image, and then
-// create as many smaller arrays than necessary, filling them with the right values at the right place, putting "-1"'s on all the
-// points indexes that aren't supposed to be covered by a texture.
-// This process also assumes the files are in the right order (i.e. the order in which m_texturesFiles has been filled matches
-// the order in which the images' texture coordinates are given in the .obj file).
+// retrieveOBJFileTCoords: read an OBJ file to extract vertex texture data
+// VTK doesn't make any difference between the texture coordinates of each image: when loading an OBJ file, it stores all TCoords in one big array.
+// That's why multi-texturing is broken by design in VTK. To fix it, this function reads the OBJ file, to know how many TCoords points are allocated to each image, and then
+// create as many smaller arrays than necessary.
+// In order to make this function work, textures images should be passed to the vtkTexturingHelper in the same order they are referenced in the OBJ file.
 // This may change in the future if this class implements the .mtl file parsing (which would even avoid us to have to specify the
 // image files' names manually).
 void vtkTexturingHelper::retrieveOBJFileTCoords() {
-    std::string prevWord = "";
-    std::ifstream	objFile;
-    std::string line;
-    unsigned int texPointsCount = 0;
+    std::ifstream objFile;
 
     objFile.open(m_geoFile.c_str());
     if (!objFile.is_open()) {
-        std::cerr << "vtkTexturingHelper: Unable to open OBJ file " << m_geoFile << std::endl;
+        std::string errMsg = "Unable to open OBJ file: ";
+        errMsg += m_geoFile;
+        throw vtkTexturingHelperException(errMsg.c_str());
     }
+
+    std::string prevLineWord = "";
+    unsigned int texPointsCount = 0;
     while (objFile.good()) {
-        std::stringstream	ss;
-        std::string  word;
+        std::stringstream ss;
+        std::string line;
+        std::string word;
         float x, y;
 
         getline(objFile, line);
         ss << line;
-        ss >> word >> x >> y; // assumes the line is well made (in case of a "vt line" it should be like "vt 42.84 42.84")
-        if (word == "vt") {
-            if (prevWord != "vt") {
-                insertNewTCoordsArray(); // if we find a vertex texture line and it's the first of a row: create a new TCoords array
+        // assumes a "word float float" line style, e.g. for vertex texture definition in OBJ: "vt 42.84 42.84"
+        ss >> word >> x >> y;
+        if (word == "vt") { // only interested in vertex texture coordinates data
+            if (prevLineWord != "vt") {
+                // if we find a vertex texture line and it's the first of a row, we reached the end of an image's coordinates
+                // so create a new TCoords array with what we gathered so far
+                insertNewTCoordsArray();
             }
             int arrayNbr;
-            // In a Obj file, texture coordinates are listed by texture, so we want to put it in the TCoords array of the right texture
+            // In an OBJ file, texture coordinates are listed by texture, so we want to put it in the TCoords array of the right texture
             // but not in the array of other textures. But every TCoords array musts also have the same number of points than the mesh!
             // So to do this we append the coordinates to the concerned TCoords array (the last one created)
             // and put (-1.0, -1.0) in the others instead.
@@ -175,7 +186,7 @@ void vtkTexturingHelper::retrieveOBJFileTCoords() {
             m_TCoordsArrays[arrayNbr]->SetTuple2(texPointsCount, x, y);
             texPointsCount++;
         }
-        prevWord = word;
+        prevLineWord = word;
     }
     objFile.close();
 }
@@ -236,7 +247,7 @@ void vtkTexturingHelper::associateTextureFiles(const std::string & _rootName, co
     std::string textureFile;
 
     for (int i = 0; i < _numberOfFiles; i++) {
-        std::stringstream	ss;
+        std::stringstream ss;
 
         ss << i;
         textureFile = _rootName + "_" + ss.str() + _extension;

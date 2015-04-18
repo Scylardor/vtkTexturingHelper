@@ -33,6 +33,16 @@
 #include "vtkSmartPointer.h"
 
 
+class vtkTexturingHelperException : public std::exception {
+public:
+	vtkTexturingHelperException(const char * _errMsg) : m_errMsg(_errMsg) {}
+	~vtkTexturingHelperException() throw() {}
+	const char * what() throw() { return m_errMsg; }
+
+private:
+	const char * m_errMsg;
+};
+
 /* vtkTexturingHelper */
 // A helper class to let you render multi-textured objects in VTK
 // Currently supported geometry file formats: OBJ
