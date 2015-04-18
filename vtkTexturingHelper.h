@@ -53,20 +53,25 @@ public:
 	~vtkTexturingHelper();
 
 	// Accessors
-	vtkActor* getActor() const;
-	vtkPolyData* getPolyData() const;
+
+	vtkSmartPointer<vtkActor> getActor() const;
+	vtkSmartPointer<vtkPolyData> getPolyData() const;
 
 
 	// Modifiers
+
+	void	clear();
 
 	// Textures
 	void	readTextureFile(const std::string & _fileName);
 	void	readTextureFiles(const std::string & _prefix, const std::string & _extension, int _numberOfFiles);
 	void	applyTextures();
 	void	clearTexturesList();
+	vtkSmartPointer<vtkImageReader2> getImageReaderForFile(const std::string & _fileName) const;
 
 	// Geometry
 	void	readGeometryFile(const std::string & _filename);
+	void	clearTCoordsList();
 
 private:
 	typedef	void (vtkTexturingHelper::*geoReaderFunction)();
@@ -78,7 +83,6 @@ private:
 	void	insertNewTCoordsArray();
 
 	// Textures
-	vtkSmartPointer<vtkImageReader2> getImageReaderForFile(const std::string & _fileName);
 	void	convertImageToTexture(vtkSmartPointer<vtkImageReader2>  _imageReader);
 	int		getNumberOfSupportedTextureUnits() const;
 
@@ -87,10 +91,9 @@ private:
 	std::map<std::string, geoReaderFunction> m_geoExtensionsMap;
 	unsigned short m_TCoordsCount;
 	std::string m_geoFile;
-	vtkPolyData * m_polyData;
+	vtkSmartPointer<vtkPolyData> m_polyData;
 	vtkSmartPointer<vtkPolyDataMapper> m_mapper;
-	vtkActor * m_actor;
-
+	vtkSmartPointer<vtkActor> m_actor;
 };
 
 #endif

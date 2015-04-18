@@ -33,15 +33,21 @@
 #include "vtkTexturingHelper.h"
 
 vtkTexturingHelper::vtkTexturingHelper() {
-    m_polyData = NULL;
-    m_actor = vtkActor::New();
+    m_polyData = vtkSmartPointer<vtkPolyData>::New();
+    m_actor = vtkSmartPointer<vtkActor>::New();
     m_geoExtensionsMap[".obj"] = &vtkTexturingHelper::geoReadOBJ;
     m_TCoordsCount = 0;
     m_mapper = vtkSmartPointer<vtkPolyDataMapper>::New();
 }
 
-
 vtkTexturingHelper::~vtkTexturingHelper() {
+}
+
+void vtkTexturingHelper::clear() {
+    clearTCoordsList();
+    clearTexturesList();
+    m_actor = vtkSmartPointer<vtkActor>::New();
+    m_polyData = vtkSmartPointer<vtkPolyData>::New();
 }
 
 int vtkTexturingHelper::getNumberOfSupportedTextureUnits() const {
@@ -75,7 +81,6 @@ void vtkTexturingHelper::applyTextures() {
     if (nbTextures == 0) {
         throw vtkTexturingHelperException("applyTextures: trying to apply textures with no textures stored");
     }
-
     const int tu = getNumberOfSupportedTextureUnits(); // number of supported texture units
     if (tu >= 2 && nbTextures > 1) {
         int textureUnit = vtkProperty::VTK_TEXTURE_UNIT_0;
@@ -101,7 +106,6 @@ void vtkTexturingHelper::applyTextures() {
             std::cerr << "vtkTexturingHelper: Warning, multi-texturing isn't supported - falling back to mono-texturing" << std::endl;
         }
     }
-
 }
 
 // insertNewTCoordsArray - insert a new array of texture coordinates
@@ -216,7 +220,6 @@ void vtkTexturingHelper::readGeometryFile(const std::string & _filename) {
     }
 }
 
-
 void vtkTexturingHelper::convertImageToTexture(vtkSmartPointer<vtkImageReader2> _imageReader) {
     vtkSmartPointer<vtkTexture> newTexture = vtkSmartPointer<vtkTexture>::New();
     newTexture->SetInputConnection(_imageReader->GetOutputPort());
@@ -232,11 +235,11 @@ void vtkTexturingHelper::convertImageToTexture(vtkSmartPointer<vtkImageReader2> 
     m_textures.push_back(newTexture);
 }
 
-vtkSmartPointer<vtkImageReader2> vtkTexturingHelper::getImageReaderForFile(const std::string & _fileName) {
+vtkSmartPointer<vtkImageReader2> vtkTexturingHelper::getImageReaderForFile(const std::string & _fileName) const {
     vtkImageReader2 * imageReader = vtkImageReader2Factory::CreateImageReader2(_fileName.c_str());
     // This image format isn't supported by VTK
     if (imageReader == NULL) {
-        std::string errMsg = "This kind of file is not supported by VTK vtkImageReader2Factory: ";
+        std::string errMsg = "This file is not supported or cannot be opened by VTK vtkImageReader2Factory: ";
         errMsg += _fileName;
         throw vtkTexturingHelperException(errMsg.c_str());
     }
@@ -288,17 +291,20 @@ void vtkTexturingHelper::clearTexturesList() {
     m_textures.clear();
 }
 
-
-vtkPolyData* vtkTexturingHelper::getPolyData() const {
+vtkSmartPointer<vtkPolyData> vtkTexturingHelper::getPolyData() const {
     return m_polyData;
 }
 
-
-vtkActor * vtkTexturingHelper::getActor() const {
+vtkSmartPointer<vtkActor> vtkTexturingHelper::getActor() const {
     m_actor->SetMapper(m_mapper);
     return m_actor;
 }
 
 void vtkTexturingHelper::setGeometryFile(const std::string & _file) {
     m_geoFile = _file;
+}
+
+void vtkTexturingHelper::clearTCoordsList() {
+    m_TCoordsArrays.clear();
+    m_TCoordsCount = 0;
 }
