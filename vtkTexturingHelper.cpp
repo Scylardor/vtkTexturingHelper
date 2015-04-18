@@ -24,7 +24,7 @@
 #include "vtkPoints.h"
 #include "vtkPolyDataMapper.h"
 #include "vtkRenderWindow.h"
-#include "vtkJPEGReader.h"
+#include "vtkImageReader2Factory.h"
 #include "vtkOBJReader.h"
 #include "vtkProperty.h"
 #include "vtkOpenGLHardwareSupport.h"
@@ -36,7 +36,6 @@ vtkTexturingHelper::vtkTexturingHelper() {
     m_polyData = NULL;
     m_actor = vtkActor::New();
     m_geoExtensionsMap[".obj"] = &vtkTexturingHelper::geoReadOBJ;
-    m_imgExtensionsMap[".jpg"] = &vtkTexturingHelper::readjPEGTexture;
     m_TCoordsCount = 0;
     m_mapper = vtkSmartPointer<vtkPolyDataMapper>::New();
 }
@@ -45,71 +44,54 @@ vtkTexturingHelper::vtkTexturingHelper() {
 vtkTexturingHelper::~vtkTexturingHelper() {
 }
 
-
-void vtkTexturingHelper::readjPEGTexture(int _index) {
-    vtkSmartPointer<vtkJPEGReader> jPEGReader = vtkSmartPointer<vtkJPEGReader>::New();
-    vtkSmartPointer<vtkTexture> newTexture = vtkSmartPointer<vtkTexture>::New();
-
-    jPEGReader->SetFileName(m_texturesFiles[_index].c_str());
-    jPEGReader->Update();
-    newTexture->SetInputConnection(jPEGReader->GetOutputPort());
-    m_textures.push_back(newTexture);
-}
-
-
-void vtkTexturingHelper::configureTexture(int _texIndex) {
-    if (_texIndex == 0) {
-        m_textures[_texIndex]->SetBlendingMode(vtkTexture::VTK_TEXTURE_BLENDING_MODE_REPLACE);
-    }
-    else {
-        m_textures[_texIndex]->SetBlendingMode(vtkTexture::VTK_TEXTURE_BLENDING_MODE_ADD);
-    }
-}
-
-
-void vtkTexturingHelper::convertImagesToTextures() {
-    for (int texIndex = 0; texIndex != m_texturesFiles.size(); texIndex++) {
-        const std::string ext = m_texturesFiles[texIndex].substr(m_texturesFiles[texIndex].find_last_of("."));
-
-        if (m_imgExtensionsMap.find(ext) != m_imgExtensionsMap.end()) {
-            (this->*m_imgExtensionsMap[ext])(texIndex);
-            configureTexture(texIndex);
-        }
-        else {
-            std::string error = "Unmanaged image extension: ";
-            error += ext;
-            throw vtkTexturingHelperException(error.c_str());
-        }
-    }
-}
-
-
-void vtkTexturingHelper::applyTextures() {
-    this->convertImagesToTextures();
-
+int vtkTexturingHelper::getNumberOfSupportedTextureUnits() const {
+    const size_t nbTextures = m_textures.size();
     // We need a temporary render window to know whether the hardware supports multitexturing.
-    vtkRenderWindow* tmp = vtkRenderWindow::New();
-    vtkOpenGLHardwareSupport* hardware = vtkOpenGLRenderWindow::SafeDownCast(tmp)->GetHardwareSupport();
+    vtkRenderWindow * tmp = vtkRenderWindow::New();
+    vtkOpenGLHardwareSupport * hardware = vtkOpenGLRenderWindow::SafeDownCast(tmp)->GetHardwareSupport();
+    const int tu = hardware->GetSupportsMultiTexturing() ? hardware->GetNumberOfFixedTextureUnits() : 0; // number of supported texture units
+    tmp->Delete(); // free the temporary render window
 
-    int tu = 0; // number of supported texture units
-    if (hardware->GetSupportsMultiTexturing()) {
-        tu = hardware->GetNumberOfFixedTextureUnits();
+    if (tu < nbTextures) {
+        std::string warning = "Warning: Hardware does not support the number of textures defined. Using only first ";
+        std::stringstream ss;
+        ss << tu;
+        warning += ss.str();
+        warning += " textures instead of ";
+        ss.clear();
+        ss.str("");
+        ss << nbTextures;
+        warning += ss.str() + ".";
+        std::cerr << warning << std::endl;
     }
-    if (tu >= 2 && m_textures.size() > 1) {
+    return tu;
+}
+
+// applyTextures - will attribute to each texture unit the matching TCoords array and provide the actor the texture data.
+// This is the function where we discover hardware multitexturing capability. It falls back to monotexturing if multitexturing is unavailable.
+void vtkTexturingHelper::applyTextures() {
+    const size_t nbTextures = m_textures.size();
+
+    if (nbTextures == 0) {
+        throw vtkTexturingHelperException("applyTextures: trying to apply textures with no textures stored");
+    }
+
+    const int tu = getNumberOfSupportedTextureUnits(); // number of supported texture units
+    if (tu >= 2 && nbTextures > 1) {
         int textureUnit = vtkProperty::VTK_TEXTURE_UNIT_0;
 
         // Map each TCoords array to the good texture unit in the polyData.
-        for (unsigned int texNumber = 0; texNumber <= tu && texNumber < m_TCoordsArrays.size(); texNumber++) {
+        for (unsigned int texIdx = 0; texIdx < tu && texIdx < m_TCoordsArrays.size(); texIdx++) {
             m_mapper->MapDataArrayToMultiTextureAttribute(textureUnit,
-                                                          m_TCoordsArrays[texNumber]->GetName(),
+                                                          m_TCoordsArrays[texIdx]->GetName(),
                                                           vtkDataObject::FIELD_ASSOCIATION_POINTS);
-            m_polyData->GetPointData()->AddArray(m_TCoordsArrays[texNumber]);
+            m_polyData->GetPointData()->AddArray(m_TCoordsArrays[texIdx]);
             textureUnit++;
         }
         // Set the textures to use in the actor.
         textureUnit = vtkProperty::VTK_TEXTURE_UNIT_0;
-        for (unsigned int texNumber = 0; texNumber < m_TCoordsArrays.size(); texNumber++) {
-            m_actor->GetProperty()->SetTexture(textureUnit, m_textures[texNumber]);
+        for (unsigned int texIdx = 0; texIdx < tu && texIdx < m_TCoordsArrays.size(); texIdx++) {
+            m_actor->GetProperty()->SetTexture(textureUnit, m_textures[texIdx]);
             textureUnit++;
         }
     }
@@ -119,7 +101,7 @@ void vtkTexturingHelper::applyTextures() {
             std::cerr << "vtkTexturingHelper: Warning, multi-texturing isn't supported - falling back to mono-texturing" << std::endl;
         }
     }
-    tmp->Delete(); // free the temporary render window
+
 }
 
 // insertNewTCoordsArray - insert a new array of texture coordinates
@@ -194,6 +176,7 @@ void vtkTexturingHelper::retrieveOBJFileTCoords() {
 }
 
 // Method to obtain a PolyData out of a Wavefront OBJ file (internal)
+// This function can take a long time since it parses OBJ files
 void vtkTexturingHelper::geoReadOBJ() {
     vtkSmartPointer<vtkOBJReader> reader = vtkSmartPointer<vtkOBJReader>::New();
 
@@ -233,12 +216,52 @@ void vtkTexturingHelper::readGeometryFile(const std::string & _filename) {
     }
 }
 
+
+void vtkTexturingHelper::convertImageToTexture(vtkSmartPointer<vtkImageReader2> _imageReader) {
+    vtkSmartPointer<vtkTexture> newTexture = vtkSmartPointer<vtkTexture>::New();
+    newTexture->SetInputConnection(_imageReader->GetOutputPort());
+
+    // We must use REPLACE for the first texture, and ADD for the others, otherwise the result will be buggy !
+    const bool isFirst = m_textures.size() == 0;
+    if (isFirst) {
+        newTexture->SetBlendingMode(vtkTexture::VTK_TEXTURE_BLENDING_MODE_REPLACE);
+    }
+    else {
+        newTexture->SetBlendingMode(vtkTexture::VTK_TEXTURE_BLENDING_MODE_ADD);
+    }
+    m_textures.push_back(newTexture);
+}
+
+vtkSmartPointer<vtkImageReader2> vtkTexturingHelper::getImageReaderForFile(const std::string & _fileName) {
+    vtkImageReader2 * imageReader = vtkImageReader2Factory::CreateImageReader2(_fileName.c_str());
+    // This image format isn't supported by VTK
+    if (imageReader == NULL) {
+        std::string errMsg = "This kind of file is not supported by VTK vtkImageReader2Factory: ";
+        errMsg += _fileName;
+        throw vtkTexturingHelperException(errMsg.c_str());
+    }
+    // wrap it in a smart pointer - no risk of forgetting to call Delete !
+    vtkSmartPointer<vtkImageReader2> smartImageReader;
+    smartImageReader.TakeReference(imageReader);
+    return smartImageReader;
+}
+
 // addTextureFile - Primary function to manually specify a texture to use by its name.
 // It can be useful when texture files names don't respect the "name_imageNumber.ext" convention.
 // However, it is important to specify the textures in the same order than they are described in the geometry file !
 // The results will otherwise be erroneous.
-void vtkTexturingHelper::addTextureFile(const std::string & _imageFile) {
-    m_texturesFiles.push_back(_imageFile);
+void vtkTexturingHelper::readTextureFile(const std::string & _fileName) {
+    vtkSmartPointer<vtkImageReader2> imageReader = getImageReaderForFile(_fileName);
+    // This image format isn't supported by VTK
+    if (imageReader == NULL) {
+        std::string errMsg = "File format is not supported by VTK vtkImageReader2Factory: ";
+        errMsg += _fileName;
+        throw vtkTexturingHelperException(errMsg.c_str());
+    }
+    // Next, read the file data and create a texture with it.
+    imageReader->SetFileName(_fileName.c_str());
+    imageReader->Update();
+    convertImageToTexture(imageReader);
 }
 
 // associateTextureFiles - feed the vtkTexturingHelper with texture files with a specific filename pattern.
@@ -246,18 +269,23 @@ void vtkTexturingHelper::addTextureFile(const std::string & _imageFile) {
 // This function currently supports the filename format "example_imgNumber.ext",
 // e.g.: using ("sasha", ".jpg", 3) as parameters will make it add "sasha_0.jpg", "sasha_1.jpg", and "sasha_2.jpg" to the list of the texture files to use.
 // When doing so, be sure that the texture coordinates data in the geometry file references the textures in that exact same order.
-void vtkTexturingHelper::associateTextureFiles(const std::string & _rootName, const std::string & _extension, int _numberOfFiles) {
-    for (int i = 0; i < _numberOfFiles; i++) {
-        std::stringstream ss;
-        ss << i;
+void vtkTexturingHelper::readTextureFiles(const std::string & _prefix, const std::string & _extension, int _numberOfFiles) {
+    vtkSmartPointer<vtkImageReader2> imageReader = NULL;
 
-        const std::string textureFile = _rootName + "_" + ss.str() + _extension;
-        addTextureFile(textureFile);
+    if (_numberOfFiles <= 0) {
+        throw vtkTexturingHelperException("Please provide a non-null positive number of texture files to read");
+    }
+    for (int fileIdx = 0; fileIdx < _numberOfFiles; fileIdx++) {
+        std::stringstream ss;
+        ss << fileIdx;
+        const std::string fileName = _prefix + "_" + ss.str() + _extension;
+
+        readTextureFile(fileName);
     }
 }
 
 void vtkTexturingHelper::clearTexturesList() {
-    m_texturesFiles.clear();
+    m_textures.clear();
 }
 
 
@@ -270,12 +298,6 @@ vtkActor * vtkTexturingHelper::getActor() const {
     m_actor->SetMapper(m_mapper);
     return m_actor;
 }
-
-
-void vtkTexturingHelper::setPolyData(vtkPolyData * _polyData) {
-    m_polyData = _polyData;
-}
-
 
 void vtkTexturingHelper::setGeometryFile(const std::string & _file) {
     m_geoFile = _file;

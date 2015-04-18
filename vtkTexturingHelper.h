@@ -27,6 +27,7 @@
 #include "vtkActor.h"
 #include "vtkPolyData.h"
 #include "vtkPolyDataMapper.h"
+#include "vtkImageReader2.h"
 #include "vtkTexture.h"
 #include "vtkFloatArray.h"
 #include "vtkSmartPointer.h"
@@ -48,50 +49,45 @@ private:
 // Currently supported texture file formats: JPEG
 class vtkTexturingHelper {
 public:
-	// Ctors/dtors
 	vtkTexturingHelper();
 	~vtkTexturingHelper();
 
-	// Textures methods
-	void addTextureFile(const std::string & _file);
-	void associateTextureFiles(const std::string & _rootName, const std::string & _extension, int _numberOfFiles);
-	void clearTexturesList();
-	void convertImagesToTextures();
-	void applyTextures();
-	void configureTexture(int _nbTextures);
-	void readjPEGTexture(int _texIndex);
-
-	// Geometry methods
-	void readGeometryFile(const std::string & _filename);
-	void readOBJFile(const std::string & _filename);
-
-	// Get/Setters
-
-	// Returns the textured polydata's actor. It is to the caller to delete it
-	// (by calling Delete or wrapping it in a smart pointer).
+	// Accessors
 	vtkActor* getActor() const;
 	vtkPolyData* getPolyData() const;
-	void setPolyData(vtkPolyData * _polyData);
-	// Specifies the geometry file to use.
-	// Needs to be called before readGeometryFile() (unless you specify the name to readGeometryFile)
-	void setGeometryFile(const std::string & _file);
+
+
+	// Modifiers
+
+	// Textures
+	void	readTextureFile(const std::string & _fileName);
+	void	readTextureFiles(const std::string & _prefix, const std::string & _extension, int _numberOfFiles);
+	void	applyTextures();
+	void	clearTexturesList();
+
+	// Geometry
+	void	readGeometryFile(const std::string & _filename);
 
 private:
-	typedef void (vtkTexturingHelper::*geoReaderFunction)();
-	typedef void (vtkTexturingHelper::*imgReaderFunction)(int);
+	typedef	void (vtkTexturingHelper::*geoReaderFunction)();
 
-	void geoReadOBJ();
-	void retrieveOBJFileTCoords();
-	void insertNewTCoordsArray();
+	// Geometry
+	void	setGeometryFile(const std::string & _file);
+	void	geoReadOBJ();
+	void	retrieveOBJFileTCoords();
+	void	insertNewTCoordsArray();
 
-	std::vector<std::string> m_texturesFiles;
+	// Textures
+	vtkSmartPointer<vtkImageReader2> getImageReaderForFile(const std::string & _fileName);
+	void	convertImageToTexture(vtkSmartPointer<vtkImageReader2>  _imageReader);
+	int		getNumberOfSupportedTextureUnits() const;
+
 	std::vector<vtkSmartPointer<vtkFloatArray> > m_TCoordsArrays;
 	std::vector<vtkSmartPointer<vtkTexture> > m_textures;
 	std::map<std::string, geoReaderFunction> m_geoExtensionsMap;
-	std::map<std::string, imgReaderFunction> m_imgExtensionsMap;
 	unsigned short m_TCoordsCount;
 	std::string m_geoFile;
-	vtkPolyData* m_polyData;
+	vtkPolyData * m_polyData;
 	vtkSmartPointer<vtkPolyDataMapper> m_mapper;
 	vtkActor * m_actor;
 
