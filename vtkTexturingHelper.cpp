@@ -80,14 +80,8 @@ void vtkTexturingHelper::convertImagesToTextures() {
 
 
 void vtkTexturingHelper::applyTextures() {
-    vtkSmartPointer<vtkPolyDataMapper> mapper = vtkSmartPointer<vtkPolyDataMapper>::New();
-
     this->convertImagesToTextures();
-#if VTK_MAJOR_VERSION < 6
-    mapper->SetInput(m_polyData);
-#else
-    mapper->SetInputData(m_polyData);
-#endif
+
     int tu; // number of texture units
     vtkRenderWindow* tmp = vtkRenderWindow::New();
     vtkOpenGLHardwareSupport* hardware = vtkOpenGLRenderWindow::SafeDownCast(tmp)->GetHardwareSupport();
@@ -96,11 +90,11 @@ void vtkTexturingHelper::applyTextures() {
     if (hardware->GetSupportsMultiTexturing()) {
         tu = hardware->GetNumberOfFixedTextureUnits();
     }
-    if (tu >= 2) {
+    if (tu >= 2 && m_textures.size() > 1) {
         int textureUnit = vtkProperty::VTK_TEXTURE_UNIT_0;
 
         for (unsigned int texNumber = 0; texNumber <= tu && texNumber < m_TCoordsArrays.size(); texNumber++) {
-            mapper->MapDataArrayToMultiTextureAttribute(
+            m_mapper->MapDataArrayToMultiTextureAttribute(
                 textureUnit, m_TCoordsArrays[texNumber]->GetName(),
                 vtkDataObject::FIELD_ASSOCIATION_POINTS);
             m_polyData->GetPointData()->AddArray(m_TCoordsArrays[texNumber]);
@@ -117,7 +111,6 @@ void vtkTexturingHelper::applyTextures() {
         m_actor->SetTexture(m_textures[0]);
         std::cerr << "vtkTexturingHelper: Warning, multi-texturing isn't supported - falling back to mono-texturing" << std::endl;
     }
-    m_actor->SetMapper(mapper);
     tmp->Delete();
 }
 
