@@ -17,6 +17,9 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
+#include <stdexcept>    // std::out_of_range
+#include <sstream>      // std::stringstream
+
 #include "vtkPointData.h"
 #include "vtkPoints.h"
 #include "vtkPolyDataMapper.h"
@@ -84,12 +87,11 @@ void vtkTexturingHelper::convertImagesToTextures() {
 void vtkTexturingHelper::applyTextures() {
     this->convertImagesToTextures();
 
-    int tu; // number of supported texture units
     // We need a temporary render window to know whether the hardware supports multitexturing.
     vtkRenderWindow* tmp = vtkRenderWindow::New();
     vtkOpenGLHardwareSupport* hardware = vtkOpenGLRenderWindow::SafeDownCast(tmp)->GetHardwareSupport();
 
-    tu = 0;
+    int tu = 0; // number of supported texture units
     if (hardware->GetSupportsMultiTexturing()) {
         tu = hardware->GetNumberOfFixedTextureUnits();
     }
@@ -191,12 +193,9 @@ void vtkTexturingHelper::retrieveOBJFileTCoords() {
     objFile.close();
 }
 
-// Method to obtain a PolyData out of a Wavefront OBJ file
-void vtkTexturingHelper::readOBJFile(const std::string & _filename) {
-    setGeometryFile(_filename);
-    geoReadOBJ();
-
-    vtkOBJReader* reader = vtkOBJReader::New();
+// Method to obtain a PolyData out of a Wavefront OBJ file (internal)
+void vtkTexturingHelper::geoReadOBJ() {
+    vtkSmartPointer<vtkOBJReader> reader = vtkSmartPointer<vtkOBJReader>::New();
 
     reader->SetFileName(m_geoFile.c_str());
     reader->Update();
@@ -209,19 +208,29 @@ void vtkTexturingHelper::readOBJFile(const std::string & _filename) {
     retrieveOBJFileTCoords();
 }
 
-// Method to obtain a PolyData out of a Wavefront OBJ file (internal)
-void vtkTexturingHelper::geoReadOBJ() {
-    vtkOBJReader* reader = vtkOBJReader::New();
+// readGeometryFile - Read a geometry file according to its filename extension
+// This function tries to guess the geometry file type by looking at its extension to call the right parser to extract the geometry data.
+void vtkTexturingHelper::readGeometryFile(const std::string & _filename) {
+    setGeometryFile(_filename);
 
-    reader->SetFileName(m_geoFile.c_str());
-    reader->Update();
-    m_polyData = reader->GetOutput();
-#if VTK_MAJOR_VERSION < 6
-    m_mapper->SetInput(reader->GetOutput());
-#else
-    m_mapper->SetInputData(reader->GetOutput());
-#endif
-    retrieveOBJFileTCoords();
+    std::string ext = "";
+    try {
+        ext = m_geoFile.substr(m_geoFile.find_last_of("."));
+    } catch (const std::out_of_range & oor) {
+        std::string errMsg = "Cannot guess geometry file format using extension of filename: ";
+        errMsg += _filename;
+
+        throw vtkTexturingHelperException(errMsg.c_str());
+    }
+    if (m_geoExtensionsMap.find(ext) != m_geoExtensionsMap.end()) {
+        (this->*m_geoExtensionsMap[ext])();
+    }
+    else {
+        std::string errMsg = "Unmanaged geometry file extension: ";
+        errMsg += ext;
+
+        throw vtkTexturingHelperException(errMsg.c_str());
+    }
 }
 
 // addTextureFile - Primary function to manually specify a texture to use by its name.
@@ -246,27 +255,6 @@ void vtkTexturingHelper::associateTextureFiles(const std::string & _rootName, co
         addTextureFile(textureFile);
     }
 }
-
-
-void vtkTexturingHelper::readGeometryFile(const std::string & _filename) {
-    const std::string empty("");
-
-    if (_filename != empty) {
-        setGeometryFile(_filename);
-    }
-    const std::string ext = m_geoFile.substr(m_geoFile.find_last_of("."));
-
-    if (m_geoExtensionsMap.find(ext) != m_geoExtensionsMap.end()) {
-        (this->*m_geoExtensionsMap[ext])();
-    }
-    else {
-        std::string errMsg = "Unmanaged geometry file extension: ";
-        errMsg += ext;
-
-        throw vtkTexturingHelperException(errMsg.c_str());
-    }
-}
-
 
 void vtkTexturingHelper::clearTexturesList() {
     m_texturesFiles.clear();

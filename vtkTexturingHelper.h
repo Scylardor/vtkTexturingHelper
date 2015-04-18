@@ -23,7 +23,6 @@
 #include <vector>
 #include <map>
 #include <string>
-#include <sstream>
 
 #include "vtkActor.h"
 #include "vtkPolyData.h"
@@ -37,7 +36,7 @@ class vtkTexturingHelperException : public std::exception {
 public:
 	vtkTexturingHelperException(const char * _errMsg) : m_errMsg(_errMsg) {}
 	~vtkTexturingHelperException() throw() {}
-	const char * what() throw() { return m_errMsg; }
+	const char * what() const throw() { return m_errMsg; }
 
 private:
 	const char * m_errMsg;
@@ -63,7 +62,7 @@ public:
 	void readjPEGTexture(int _texIndex);
 
 	// Geometry methods
-	void readGeometryFile(const std::string & _filename="");
+	void readGeometryFile(const std::string & _filename);
 	void readOBJFile(const std::string & _filename);
 
 	// Get/Setters
