@@ -84,7 +84,7 @@ private:
 	std::string m_geoFile;
 	vtkPolyData* m_polyData;
 	vtkSmartPointer<vtkPolyDataMapper> m_mapper;
-	vtkActor* m_actor;
+	vtkActor * m_actor;
 
 };
 
